@@ -13,7 +13,7 @@ from scipy.signal import convolve2d
 from math import exp
 from tqdm import tqdm
 import matplotlib.animation as animation
-import heapq
+import heapq # 堆队列
 from mpl_toolkits.mplot3d import Axes3D
 from IPython.display import Image
 from scipy.spatial import Voronoi, voronoi_plot_2d
@@ -41,7 +41,7 @@ def clip(value, lower, upper):
     return lower if value < lower else upper if value > upper else value
 
 #seeds and parameters
-seed = 77
+seed = 7
 townseed = 7
 histseed = 77
 size = 400
@@ -56,9 +56,11 @@ temperature_pos,temperature_zoom = 2.7,2
 distortion = 2
 distortion2 = 0.5
 
+###############################
 # 第一步，使用柏林噪声生成大陆主体
+###############################
 gammas = np.zeros((size,size))
-xcoord,ycoord=np.mgrid[0:size,0:size]/zoom
+xcoord,ycoord = np.mgrid[0:size,0:size]/zoom # np.mgrid[0:size,0:size].shape=(2,size,size)
 xcoord += x0
 ycoord += y0
 for i in range(size):
@@ -161,3 +163,78 @@ plt.title('Landmass')
 plt.show()
 '''
 
+
+# 根据海拔和坐标设定气温
+temperature = np.cos((xcoord/zoom2-temperature_pos)/temperature_zoom)**2*0.8 + 0.1
+temperature *= (1.1 - np.clip(1.2*elevation,0.1,1))
+
+'''
+
+plt.figure(figsize=(10,10))
+plt.imshow(temperature,cmap='jet',vmin=0,vmax=1,alpha=.5)
+plt.colorbar()
+
+plt.contour(np.clip(elevation,0,1),colors='black',alpha=0.1)
+plt.contour(elevation,[0.5],colors='black',alpha=0.5)
+plt.contour(elevation,[0],colors='black')
+
+plt.contour(temperature,[.2,.3,.5,.8],colors=['blue','blue','green','red'])
+plt.title('Temperature')
+plt.show()
+'''
+#####################################
+# 第2步，生成水资源。雨水从海洋中汲取水分，塑造陆地，形成高原、湖泊和河流
+# 模拟降水过程
+# 我们使用[Dijkstra 算法](https://en.wikipedia.org/wiki/Breadth-first_search)
+# （这是一个具有优先级队列的广度优先搜索算法）评估陆地上每个点到海洋的距离
+# 水汽传播的成本被海拔和坡度穿透，因此可以为内陆、山区环绕的区域实现一个漂亮的[雨影](https://en.wikipedia.org/wiki/Rain_shadow)。
+# 此外，较冷的海洋产生的水蒸气较少，较冷地区的水汽传播成本较小
+# 同时也使水蒸气更有可能向东移动，以产生一些各向异性。
+# get rainshadow
+_inf=float('inf')
+
+@njit 
+def _npclip(a,b,c):
+    '''
+    numba加速的np.clip操作
+    将a裁剪到[b,c]或[c,b]
+    '''
+    return np.minimum(np.maximum(a,b),c)
+
+@njit
+def get_rainshadow():
+    dist = np.zeros((size,size))
+    dist.fill(_inf)
+    dirs = ((0,1),(1,0),(0,-1),(-1,0))
+    opened = []
+    for i in range(size):
+        for j in range(size):
+            if elevation[i,j] <= 0:
+                dist_penalty = _npclip(1-temperature[i,j],0,1)*zoom*0.8
+                opened.append((dist_penalty,i,j,0))
+    heapq.heapify(opened) # 将list opened转化成堆队列
+    while len(opened)>0:
+        d,i,j,o = heapq.heappop(opened)
+        if dist[i,j] > d:
+            dist[i,j] = d
+            for oo,delta in enumerate(dirs):
+                ii,jj = i+delta[0],j+delta[1]
+                if 0<=ii and ii<size and 0<=jj and jj<size:
+                    if elevation[ii,jj]>0:
+                        cost=0.7*elevation[ii,jj]+0.5*(1-delta[1])+0.5*temperature[ii,jj]
+                        if elevation[ii,jj]>0.5:
+                            cost += 2
+                        if dist[ii,jj]>d+cost:
+                            heapq.heappush(opened,(d+cost,ii,jj,oo))
+    return dist.copy()/zoom
+rainshadow = get_rainshadow()
+plt.figure(figsize=(10,10))
+plt.imshow(rainshadow,cmap='viridis')
+plt.colorbar()
+
+plt.contour(np.clip(elevation,0,1),colors='black',alpha=0.1)
+plt.contour(elevation,[0.5],colors='black',alpha=0.5)
+plt.contour(elevation,[0],colors='black')
+# plt.imshow(np.ma.masked_where(elevation>0,np.zeros(elevation.shape)),cmap='winter')
+plt.title('Rain Shadow')
+plt.show()
