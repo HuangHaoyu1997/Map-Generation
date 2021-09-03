@@ -231,6 +231,8 @@ def get_rainshadow():
                             heapq.heappush(opened,(d+cost,ii,jj,oo))
     return dist.copy()/zoom
 rainshadow = get_rainshadow()
+
+'''
 plt.figure(figsize=(10,10))
 plt.imshow(rainshadow,cmap='viridis')
 plt.colorbar()
@@ -241,5 +243,82 @@ plt.contour(elevation,[0],colors='black')
 # plt.imshow(np.ma.masked_where(elevation>0,np.zeros(elevation.shape)),cmap='winter')
 plt.title('Rain Shadow')
 plt.show()
+'''
 
-# 降水量与水汽转移成本呈负指数关系，用黄色和红色绘制了降水量低于0.3和0.1的区域
+# 降水量precipitation与水汽转移成本呈负指数关系，用黄色和红色绘制了降水量低于0.3和0.1的区域
+rain = np.exp(-rainshadow/0.7)
+'''
+plt.figure(figsize=(10,10))
+plt.imshow(rain,cmap='viridis')
+plt.colorbar()
+plt.contour(rain,[0.1,0.3,0.7],colors=['red','yellow','blue'])
+
+plt.contour(np.clip(elevation,0,1),colors='black',alpha=0.1)
+plt.contour(elevation,[0.5],colors='black',alpha=0.5)
+plt.contour(elevation,[0],colors='black')
+
+plt.imshow(np.ma.masked_where(elevation>0,np.ones(elevation.shape)),cmap='winter')
+plt.title('Precipitation')
+plt.show()
+'''
+
+
+# 找到要填补的山谷
+# 用降雨和沉积物填满山谷，使它们要么成为高原，要么成为湖泊。
+# 然后土地更平坦，海拔高于海平面的地方会有更多的平坦空间。
+# 山谷被定义为被群山环绕的地区。更正式地，山谷被定义为这样一个最大区域，该区域中的每个pixel周围的pixel的海拔都比该区域的pixel高
+# 这意味着必须有一个[saddle](https://en.wikipedia.org/wiki/Saddle_(landform)) 或山口。
+# 水或沉积物会不断淹没整个山谷，直到到达最低的鞍座并流出。
+# 填满整个山谷后，可以从陆地上的任何一点找到一条*非上升*的通往海洋的路径。整个过程可以O(NxN)复杂度完成，（NxN 是地图大小）。 
+# [这篇文章](https://medium.com/universe-factory/how-i-generated-artificial-rivers-on-imaginary-continents-747df12c5d4c) 中讨论了该算法。
+# 基本思想是使用修改后的 Dijkstra 算法（或 BFS）一点一点地提高海平面以找到鞍座，并在新鞍座内填充山谷：我为所有与海相邻的像素保留一个优先级队列，按海拔排序。
+# 然后我将“海平面”升高到最低的鞍点，并检查它是否打开了一些山谷以进行洪水填充。
+# 所以我扩展了“海”并在队列中添加了更多像素。我迭代这个过程，直到所有像素都被淹没。
+
+elevation_tmp = elevation.copy()
+# get lakes and waterflow
+# https://medium.com/universe-factory/how-i-generated-artificial-rivers-on-imaginary-continents-747df12c5d4c
+@njit
+def calculate_water():
+    elevation = elevation_tmp.copy()
+    fill = _npclip(elevation,0,1)
+    orig = np.zeros((size,size),dtype=np.int8)
+    drained = elevation<-1
+    dirs = ((0,1),(1,0),(0,-1),(-1,0))
+    opened = []
+    for i in range(size):
+        for j in range(size):
+            if elevation[i,j] < -0.01:
+                opened.append((0.0,i,j,0))
+    heapq.heapify(opened)
+    #this bfs runs unexpectionally slow. may debug
+    np.random.seed(seed + 2564)
+    while len(opened)>0:
+        f,i,j,o = heapq.heappop(opened)
+        if not drained[i,j]:
+            drained[i,j] = True
+            fill[i,j] = f
+            orig[i,j] = (o+2)%4
+            for oo,delta in enumerate(dirs):
+                ii,jj = i+delta[0],j+delta[1]
+                if 0<=ii and ii<size and 0<=jj and jj<size:
+                    if not drained[ii,jj]:
+                        ff = max(f,_npclip(elevation[ii,jj],0,1))+np.random.random()*0.001
+                        #random breaks priority but not break algorithm, why?
+                        #ff=max(f,clip(elevation[ii,jj],0,1))+random[ii,jj]*0.01+random[i,j]*0.005
+                        heapq.heappush(opened,(ff,ii,jj,oo))
+    fill -= _npclip(elevation,0,1)
+    return fill,orig
+fill,downstream=calculate_water()
+
+plt.figure(figsize=(10,10))
+plt.imshow(elevation>0,alpha=0.5)
+plt.imshow(fill,cmap='viridis')
+plt.colorbar()
+
+plt.contour(np.clip(elevation,0,1),colors='black',alpha=0.1)
+plt.contour(elevation,[0.5],colors='black',alpha=0.5)
+plt.contour(elevation,[0],colors='black')
+plt.imshow(np.ma.masked_where(elevation>0,np.ones(elevation.shape)),cmap='winter')
+plt.title('Valley to fill')
+plt.show()
