@@ -14,6 +14,9 @@ from math import exp
 from tqdm import tqdm
 import matplotlib.animation as animation
 import heapq # 堆队列
+# 堆是一个二叉树，它的每个父节点的值都只会小于或等于所有孩子节点（的值）。 
+# 它使用了数组来实现：从零开始计数，对于所有的k，都有 heap[k] <= heap[2*k+1] 和 heap[k] <= heap[2*k+2]。
+# 为了便于比较，不存在的元素被认为是无限大。 堆最有趣的特性在于最小的元素总是在根结点：heap[0]。
 from mpl_toolkits.mplot3d import Axes3D
 from IPython.display import Image
 from scipy.spatial import Voronoi, voronoi_plot_2d
@@ -238,3 +241,5 @@ plt.contour(elevation,[0],colors='black')
 # plt.imshow(np.ma.masked_where(elevation>0,np.zeros(elevation.shape)),cmap='winter')
 plt.title('Rain Shadow')
 plt.show()
+
+# 降水量与水汽转移成本呈负指数关系，用黄色和红色绘制了降水量低于0.3和0.1的区域
