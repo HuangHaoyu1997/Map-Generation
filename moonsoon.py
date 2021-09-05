@@ -44,7 +44,7 @@ def clip(value, lower, upper):
     return lower if value < lower else upper if value > upper else value
 
 #seeds and parameters
-seed = 7
+seed = 77
 townseed = 7
 histseed = 77
 size = 400
@@ -172,7 +172,6 @@ temperature = np.cos((xcoord/zoom2-temperature_pos)/temperature_zoom)**2*0.8 + 0
 temperature *= (1.1 - np.clip(1.2*elevation,0.1,1))
 
 '''
-
 plt.figure(figsize=(10,10))
 plt.imshow(temperature,cmap='jet',vmin=0,vmax=1,alpha=.5)
 plt.colorbar()
@@ -186,15 +185,16 @@ plt.title('Temperature')
 plt.show()
 '''
 #####################################
-# 第2步，生成水资源。雨水从海洋中汲取水分，塑造陆地，形成高原、湖泊和河流
-# 模拟降水过程
-# 我们使用[Dijkstra 算法](https://en.wikipedia.org/wiki/Breadth-first_search)
+# 第2步，生成水资源。
+#####################################
+# 雨水从海洋中汲取水分，塑造陆地，形成高原、湖泊和河流
+# 模拟降水过程，使用[Dijkstra 算法](https://en.wikipedia.org/wiki/Breadth-first_search)
 # （这是一个具有优先级队列的广度优先搜索算法）评估陆地上每个点到海洋的距离
 # 水汽传播的成本被海拔和坡度穿透，因此可以为内陆、山区环绕的区域实现一个漂亮的[雨影](https://en.wikipedia.org/wiki/Rain_shadow)。
 # 此外，较冷的海洋产生的水蒸气较少，较冷地区的水汽传播成本较小
 # 同时也使水蒸气更有可能向东移动，以产生一些各向异性。
 # get rainshadow
-_inf=float('inf')
+_inf = float('inf')
 
 @njit 
 def _npclip(a,b,c):
@@ -303,14 +303,14 @@ def calculate_water():
                 ii,jj = i+delta[0],j+delta[1]
                 if 0<=ii and ii<size and 0<=jj and jj<size:
                     if not drained[ii,jj]:
-                        ff = max(f,_npclip(elevation[ii,jj],0,1))+np.random.random()*0.001
-                        #random breaks priority but not break algorithm, why?
-                        #ff=max(f,clip(elevation[ii,jj],0,1))+random[ii,jj]*0.01+random[i,j]*0.005
+                        ff = max(f,_npclip(elevation[ii,jj],0,1)) + np.random.random()*0.001
+                        # random breaks priority but not break algorithm, why?
+                        # ff = max(f,clip(elevation[ii,jj],0,1))+random[ii,jj]*0.01+random[i,j]*0.005
                         heapq.heappush(opened,(ff,ii,jj,oo))
     fill -= _npclip(elevation,0,1)
     return fill,orig
-fill,downstream=calculate_water()
-
+fill,downstream = calculate_water()
+'''
 plt.figure(figsize=(10,10))
 plt.imshow(elevation>0,alpha=0.5)
 plt.imshow(fill,cmap='viridis')
@@ -322,3 +322,6 @@ plt.contour(elevation,[0],colors='black')
 plt.imshow(np.ma.masked_where(elevation>0,np.ones(elevation.shape)),cmap='winter')
 plt.title('Valley to fill')
 plt.show()
+'''
+# 对于与降水量相比太大的山谷，将它们填入高原。将较小的山谷留给湖泊，并根据降水将它们缩小一点
+
